@@ -1,0 +1,25 @@
+#include <tunables/global>
+
+profile docviewd-demo /usr/local/bin/docviewd flags=(audit) {
+  #include <abstractions/base>
+
+  network inet stream,
+
+  /usr/local/bin/docviewd mr,
+
+  /srv/docview/public/ r,
+  /srv/docview/public/** r,
+
+  /var/log/docviewd/ rw,
+  /var/log/docviewd/access.log ak,
+
+  /run/docviewd/ rw,
+  /run/docviewd/docviewd.pid rwk,
+
+  @{PROC}/self/attr/current r,
+  owner @{PROC}/@{pid}/attr/current r,
+
+  signal (receive) peer=unconfined,
+  deny ptrace (trace),
+  deny mount,
+}
