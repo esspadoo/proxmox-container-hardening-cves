@@ -1,0 +1,53 @@
+#include <tunables/global>
+
+profile corp-nginx-web flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  network inet tcp,
+  network unix stream,
+  deny network raw,
+  deny network packet,
+
+  capability net_bind_service,
+  capability setuid,
+  capability setgid,
+  capability chown,
+
+  /usr/sbin/nginx mr,
+  /usr/sbin/nginx ix,
+
+  /etc/nginx/ r,
+  /etc/nginx/nginx.conf r,
+  /etc/nginx/conf.d/ r,
+  /etc/nginx/conf.d/** r,
+  /usr/share/nginx/html/ r,
+  /usr/share/nginx/html/** r,
+
+  /run/ rw,
+  /run/nginx.pid rw,
+  /var/run/nginx.pid rw,
+  /var/cache/nginx/ rw,
+  /var/cache/nginx/** rw,
+  /tmp/ rw,
+  /tmp/** rw,
+
+  signal (receive) peer=unconfined,
+
+  deny ptrace,
+  deny mount,
+  deny /proc/** w,
+  deny /proc/sys/** rwklx,
+  deny /proc/sysrq-trigger rwklx,
+  deny /proc/kcore rwklx,
+  deny /sys/** wklx,
+  deny /sys/kernel/security/** rwklx,
+
+  deny /etc/nginx/** w,
+  deny /usr/share/nginx/html/** w,
+
+  deny /bin/** x,
+  deny /sbin/** x,
+  deny /usr/bin/** x,
+  deny /usr/local/bin/** x,
+}
