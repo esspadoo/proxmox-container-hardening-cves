@@ -1,4 +1,5 @@
 ## Spiegazione Completa dell'Exploit CVE-2024-21545
+https://labs.snyk.io/resources/proxmox-ve-cve-2024-21545-tricking-the-api/
 
 ### Setup e Versioni
 
