@@ -1,5 +1,11 @@
 # CNS-CodeExamples
 
+## Demos
+
+- [AppArmor docviewd host demo](apparmor-docview-demo/README.md)
+- [AppArmor Nginx container demo](apparmor-nginx-container-demo/README.md)
+- [Redis CVE-2022-0543 AppArmor container demo](redis-cve-2022-0543-demo/README.md)
+
 
 
 ## Getting started
