@@ -4,6 +4,7 @@
 
 - [AppArmor docviewd host demo](apparmor-docview-demo/README.md)
 - [AppArmor Nginx container demo](apparmor-nginx-container-demo/README.md)
+- [Proxmox VE CVE-2024-21545 API download demo](apiAttack/README.md)
 - [Redis CVE-2022-0543 AppArmor container demo](redis-cve-2022-0543-demo/README.md)
 - [runc CVE-2024-21626 AppArmor demo](runc-cve-2024-21626-demo/README.md)
 
